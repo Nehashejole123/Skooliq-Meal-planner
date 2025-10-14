@@ -1,7 +1,7 @@
+# app/schemas.py
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, List
 
-# ---------------- Students ----------------
 class StudentBase(BaseModel):
     name: str
 
@@ -13,14 +13,12 @@ class Student(StudentBase):
     class Config:
         orm_mode = True
 
-
-# ---------------- Health Profile ----------------
 class HealthProfileBase(BaseModel):
     age: int
     height_cm: float
     weight_kg: float
-    diseases: Optional[Dict[str, Any]] = None
-    allergies: Optional[Dict[str, Any]] = None
+    diseases: Optional[Dict[str, bool]] = None
+    allergies: Optional[Dict[str, bool]] = None
 
 class HealthProfileCreate(HealthProfileBase):
     pass
@@ -31,10 +29,29 @@ class HealthProfile(HealthProfileBase):
     class Config:
         orm_mode = True
 
+# Food
+class FoodBase(BaseModel):
+    name: str
+    calories_kcal: float
+    protein_g: Optional[float] = None
+    carbs_g: Optional[float] = None
+    fat_g: Optional[float] = None
+    allergens: Optional[Dict[str, bool]] = None
+    tags: Optional[List[str]] = None
+    cuisine: Optional[str] = None
+    prep_time_min: Optional[int] = None
+    cost_index: Optional[int] = None
 
-# ---------------- Meal Plan ----------------
+class FoodCreate(FoodBase):
+    pass
+
+class Food(FoodBase):
+    id: int
+    class Config:
+        orm_mode = True
+
 class MealPlanBase(BaseModel):
-    plan: Dict[str, Any]   # ✅ JSON dictionary
+    plan: Dict
 
 class MealPlanCreate(MealPlanBase):
     pass
@@ -44,4 +61,3 @@ class MealPlan(MealPlanBase):
     student_id: int
     class Config:
         orm_mode = True
-

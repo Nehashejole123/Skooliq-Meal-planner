@@ -1,69 +1,74 @@
 from sqlalchemy.orm import Session
-from .models import Student, HealthProfile, MealPlan
+from .models import Food, MealPlan, HealthProfile
 from .ai_client import generate_meal_plan
-from .schemas import HealthProfileCreate
-import json
 
-
-# ---------------- Students ----------------
-def create_student(db: Session, name: str):
-    student = Student(name=name)
-    db.add(student)
+# ---------------- Foods ---------------- #
+def create_foods_from_list(db: Session, food_list: list):
+    created = []
+    for f in food_list:
+        obj = Food(
+            name=f["name"],
+            calories_kcal=f.get("calories_kcal", 0),
+            protein_g=f.get("protein_g"),
+            carbs_g=f.get("carbs_g"),
+            fat_g=f.get("fat_g"),
+            allergens=f.get("allergens", {}),
+            tags=f.get("tags", []),
+            cuisine=f.get("cuisine"),
+            prep_time_min=f.get("prep_time_min"),
+            cost_index=f.get("cost_index", 1),
+            is_school_friendly=f.get("is_school_friendly", True)
+        )
+        db.add(obj)
+        created.append(obj)
     db.commit()
-    db.refresh(student)
-    return student
+    for c in created:
+        db.refresh(c)
+    return created
 
 
-def get_student(db: Session, student_id: int):
-    return db.query(Student).filter(Student.id == student_id).first()
+def get_all_foods(db: Session, limit: int = 100):
+    return db.query(Food).limit(limit).all()
 
 
-# ---------------- Health Profile ----------------
-def create_health_profile(db: Session, student_id: int, profile: HealthProfileCreate):
-    health = HealthProfile(
-        student_id=student_id,
-        age=profile.age,
-        height_cm=profile.height_cm,
-        weight_kg=profile.weight_kg,
-        diseases=profile.diseases,
-        allergies=profile.allergies
-    )
-    db.add(health)
-    db.commit()
-    db.refresh(health)
-    return health
+def get_candidate_foods(
+    db: Session,
+    allergies: dict = None,
+    diseases: dict = None,
+    tags: list = None,
+    cuisine: str = None,
+    max_prep: int = None
+):
+    q = db.query(Food)
 
+    # filter by allergies: exclude foods where any allergen key is true
+    if allergies:
+        for a, val in allergies.items():
+            if val:
+                q = q.filter(~Food.allergens.contains({a: True}))
 
-# ---------------- Meal Plan ----------------
+    # tags filter
+    if tags:
+        for t in tags:
+            q = q.filter(Food.tags.contains([t]))
+
+    if cuisine:
+        q = q.filter(Food.cuisine == cuisine)
+
+    if max_prep is not None:
+        q = q.filter(Food.prep_time_min <= max_prep)
+
+    return q.all()
+
+# ---------------- Meal Plan ---------------- #
 def create_meal_plan(db: Session, student_id: int, plan_data=None):
     profile = db.query(HealthProfile).filter(HealthProfile.student_id == student_id).first()
     if not profile:
         raise Exception("Health profile not found")
 
-    # Generate via Gemini or fallback
+    # generate plan from dataset + AI client if not provided
     if plan_data is None:
-        try:
-            raw_response = generate_meal_plan(profile)
-
-            # ✅ Ensure it's a dictionary
-            if isinstance(raw_response, str):
-                try:
-                    plan_data = json.loads(raw_response)   # if it’s JSON string
-                except json.JSONDecodeError:
-                    # fallback: wrap string into dict
-                    plan_data = {"summary": raw_response}
-            elif isinstance(raw_response, dict):
-                plan_data = raw_response
-            else:
-                plan_data = {"summary": str(raw_response)}
-
-        except Exception:
-            # final fallback
-            plan_data = {
-                "breakfast": "Oatmeal with fruits",
-                "lunch": "Rice, dal, salad",
-                "dinner": "Chapati, vegetables, milk"
-            }
+        plan_data = generate_meal_plan(db, profile)   # ✅ pass db
 
     meal_plan = MealPlan(student_id=student_id, plan=plan_data)
     db.add(meal_plan)
